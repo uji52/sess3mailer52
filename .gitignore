@@ -1,8 +1,24 @@
-*.js
-!jest.config.js
-*.d.ts
-node_modules
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# CDK asset staging directory
-.cdk.staging
-cdk.out
+# CDK
+backend/cdk.out/
+backend/*.d.ts
+backend/*.js
+
+# Keys & Secrets
+keys/private_key.pem
+*.pem
+.env
+.env.*
+!.env.example
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

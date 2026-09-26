@@ -17,6 +17,9 @@
     ]
   },
   "context": {
+    "sesMailBucketName": "YOUR_SES_BUCKET_NAME",
+    "sesMailPrefix": "",
+    "publicKeyPath": "../keys/public_key.pem",
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
     "@aws-cdk/aws-apigateway:authorizerChangeDeploymentLogicalId": true,
     "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,
