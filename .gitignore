@@ -27,3 +27,13 @@ Thumbs.db
 
 # Private
 tools/create_cookie.js
+
+# Android
+.gradle/
+build/
+app/build/
+*.iml
+.idea/
+local.properties
+*.apk
+*.aab

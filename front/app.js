@@ -31,9 +31,17 @@ const textBodyEl = document.getElementById('textBody');
 const authModalEl = document.getElementById('authModal');
 const retryAuthBtnEl = document.getElementById('retryAuthBtn');
 
+const headerModalEl = document.getElementById('headerModal');
+const closeHeaderModalBtnEl = document.getElementById('closeHeaderModalBtn');
+const closeHeaderModalFooterBtnEl = document.getElementById('closeHeaderModalFooterBtn');
+const copyHeadersBtnEl = document.getElementById('copyHeadersBtn');
+const copyStatusTextEl = document.getElementById('copyStatusText');
+const rawHeadersTextEl = document.getElementById('rawHeadersText');
+
 // 初期化
 window.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  setupResizer();
   loadEmailList();
 });
 
@@ -51,7 +59,28 @@ function setupEventListeners() {
 
   viewRawBtnEl.addEventListener('click', () => {
     if (!currentEmail) return;
-    alert(`S3 Key: ${currentEmail.key}\nMessage ID: ${currentEmail.messageId || 'N/A'}`);
+    showHeadersModal();
+  });
+
+  if (closeHeaderModalBtnEl) {
+    closeHeaderModalBtnEl.addEventListener('click', hideHeadersModal);
+  }
+  if (closeHeaderModalFooterBtnEl) {
+    closeHeaderModalFooterBtnEl.addEventListener('click', hideHeadersModal);
+  }
+  if (headerModalEl) {
+    headerModalEl.addEventListener('click', (e) => {
+      if (e.target === headerModalEl) hideHeadersModal();
+    });
+  }
+  if (copyHeadersBtnEl) {
+    copyHeadersBtnEl.addEventListener('click', copyHeadersToClipboard);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && headerModalEl && !headerModalEl.classList.contains('hidden')) {
+      hideHeadersModal();
+    }
   });
 }
 
@@ -281,6 +310,76 @@ function showAuthModal() {
   authModalEl.classList.remove('hidden');
 }
 
+/**
+ * メールヘッダー詳細モーダルを表示
+ */
+function showHeadersModal() {
+  if (!currentEmail) return;
+
+  let headersContent = '';
+  if (currentEmail.rawHeaders && currentEmail.rawHeaders.trim()) {
+    headersContent = currentEmail.rawHeaders.trim();
+  } else if (currentEmail.headerLines && currentEmail.headerLines.length > 0) {
+    headersContent = currentEmail.headerLines.map((h) => h.line).join('\n');
+  } else {
+    // フォールバック表示
+    const fallbackList = [
+      `Subject: ${currentEmail.subject || ''}`,
+      `From: ${currentEmail.from || ''}`,
+      `To: ${currentEmail.to || ''}`,
+      currentEmail.cc ? `Cc: ${currentEmail.cc}` : null,
+      `Date: ${currentEmail.date || ''}`,
+      currentEmail.messageId ? `Message-ID: ${currentEmail.messageId}` : null,
+      `S3-Key: ${currentEmail.key || ''}`,
+    ].filter(Boolean);
+    headersContent = fallbackList.join('\n');
+  }
+
+  rawHeadersTextEl.textContent = headersContent;
+  copyStatusTextEl.classList.add('hidden');
+  headerModalEl.classList.remove('hidden');
+}
+
+/**
+ * メールヘッダー詳細モーダルを閉じる
+ */
+function hideHeadersModal() {
+  if (headerModalEl) {
+    headerModalEl.classList.add('hidden');
+  }
+}
+
+/**
+ * メールヘッダーをクリップボードにコピー
+ */
+async function copyHeadersToClipboard() {
+  const text = rawHeadersTextEl.textContent;
+  if (!text) return;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      throw new Error('Clipboard API not available');
+    }
+  } catch (err) {
+    // フォールバック: textarea を使ってコピー
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  copyStatusTextEl.classList.remove('hidden');
+  setTimeout(() => {
+    copyStatusTextEl.classList.add('hidden');
+  }, 2500);
+}
+
 // ユーティリティ
 function escapeHtml(str) {
   if (!str) return '';
@@ -319,4 +418,150 @@ function formatBytes(bytes, decimals = 1) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// ==========================================
+// 左右リサイズ＆サイドバー折りたたみ管理
+// ==========================================
+function setupResizer() {
+  const resizerEl = document.getElementById('resizer');
+  const sidebarEl = document.getElementById('sidebar');
+  const collapseSidebarBtnEl = document.getElementById('collapseSidebarBtn');
+  const expandSidebarBtnEl = document.getElementById('expandSidebarBtn');
+  const expandSidebarBtnEmptyEl = document.getElementById('expandSidebarBtnEmpty');
+
+  if (!resizerEl || !sidebarEl) return;
+
+  const STORAGE_KEY = 'sess3mailer_sidebar_width';
+  const COLLAPSED_KEY = 'sess3mailer_sidebar_collapsed';
+
+  // 保存されている幅を復元
+  const savedWidth = localStorage.getItem(STORAGE_KEY);
+  if (savedWidth) {
+    document.documentElement.style.setProperty('--sidebar-width', `${savedWidth}px`);
+  } else if (window.innerWidth <= 768) {
+    // モバイルの初期値: 画面幅の38% (本文が62%見えます)
+    const initialMobileWidth = Math.max(120, Math.floor(window.innerWidth * 0.38));
+    document.documentElement.style.setProperty('--sidebar-width', `${initialMobileWidth}px`);
+  }
+
+  // 保存されている折りたたみ状態を復元
+  const isCollapsed = localStorage.getItem(COLLAPSED_KEY) === 'true';
+  if (isCollapsed) {
+    setSidebarCollapsed(true, false);
+  }
+
+  // ドラッグ処理 (マウス & タッチ両対応)
+  let isDragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  function onDragStart(clientX) {
+    isDragging = true;
+    startX = clientX;
+    startWidth = sidebarEl.getBoundingClientRect().width;
+    document.body.classList.add('is-resizing');
+    resizerEl.classList.add('active');
+  }
+
+  function onDragMove(clientX) {
+    if (!isDragging) return;
+    const delta = clientX - startX;
+    let newWidth = startWidth + delta;
+
+    // 制限: 最小70px、最大は画面幅 - 80px
+    const minWidth = window.innerWidth <= 768 ? 60 : 120;
+    const maxWidth = window.innerWidth - (window.innerWidth <= 768 ? 70 : 180);
+
+    newWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+    document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+
+    // 折りたたまれていた場合は解除
+    if (sidebarEl.classList.contains('collapsed')) {
+      setSidebarCollapsed(false, false);
+    }
+  }
+
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    document.body.classList.remove('is-resizing');
+    resizerEl.classList.remove('active');
+
+    // 確定した幅を保存
+    const finalWidth = sidebarEl.getBoundingClientRect().width;
+    localStorage.setItem(STORAGE_KEY, Math.round(finalWidth));
+  }
+
+  // マウスイベント
+  resizerEl.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    onDragStart(e.clientX);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    onDragMove(e.clientX);
+  });
+
+  window.addEventListener('mouseup', () => {
+    onDragEnd();
+  });
+
+  // タッチイベント (スマートフォン用)
+  resizerEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 0) {
+      onDragStart(e.touches[0].clientX);
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (isDragging && e.touches.length > 0) {
+      onDragMove(e.touches[0].clientX);
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', () => {
+    onDragEnd();
+  });
+
+  // ダブルタップ / ダブルクリックで比率をプリセット切り替え (35% -> 50% -> 65%)
+  const PRESET_RATIOS = [0.35, 0.50, 0.65];
+  let currentPresetIndex = 0;
+  resizerEl.addEventListener('dblclick', () => {
+    currentPresetIndex = (currentPresetIndex + 1) % PRESET_RATIOS.length;
+    const targetWidth = Math.round(window.innerWidth * PRESET_RATIOS[currentPresetIndex]);
+    document.documentElement.style.setProperty('--sidebar-width', `${targetWidth}px`);
+    localStorage.setItem(STORAGE_KEY, targetWidth);
+    if (sidebarEl.classList.contains('collapsed')) {
+      setSidebarCollapsed(false, false);
+    }
+  });
+
+  // 折りたたみ・展開処理
+  function setSidebarCollapsed(collapsed, save = true) {
+    if (collapsed) {
+      sidebarEl.classList.add('collapsed');
+      resizerEl.style.display = 'none';
+      if (expandSidebarBtnEl) expandSidebarBtnEl.classList.remove('hidden');
+      if (expandSidebarBtnEmptyEl) expandSidebarBtnEmptyEl.classList.remove('hidden');
+    } else {
+      sidebarEl.classList.remove('collapsed');
+      resizerEl.style.display = '';
+      if (expandSidebarBtnEl) expandSidebarBtnEl.classList.add('hidden');
+      if (expandSidebarBtnEmptyEl) expandSidebarBtnEmptyEl.classList.add('hidden');
+    }
+    if (save) {
+      localStorage.setItem(COLLAPSED_KEY, collapsed);
+    }
+  }
+
+  if (collapseSidebarBtnEl) {
+    collapseSidebarBtnEl.addEventListener('click', () => setSidebarCollapsed(true));
+  }
+  if (expandSidebarBtnEl) {
+    expandSidebarBtnEl.addEventListener('click', () => setSidebarCollapsed(false));
+  }
+  if (expandSidebarBtnEmptyEl) {
+    expandSidebarBtnEmptyEl.addEventListener('click', () => setSidebarCollapsed(false));
+  }
 }

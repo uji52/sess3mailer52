@@ -235,6 +235,17 @@ async function handleGetEmailDetail(key: string, headers: Record<string, string>
   const rawBuffer = await streamToBuffer(getResponse.Body as Readable);
   const parsed = await simpleParser(rawBuffer);
 
+  // 生ヘッダーの抽出（最初の空行まで）
+  const rawText = rawBuffer.toString('utf-8');
+  const headerEndIndex = rawText.search(/\r?\n\r?\n/);
+  const rawHeaders = headerEndIndex !== -1 ? rawText.substring(0, headerEndIndex) : '';
+
+  // 構造化ヘッダー行
+  const headerLines = (parsed.headerLines || []).map(h => ({
+    key: h.key,
+    line: h.line,
+  }));
+
   const attachments = (parsed.attachments || []).map((att, idx) => ({
     index: idx,
     filename: att.filename || `attachment-${idx + 1}`,
@@ -255,6 +266,8 @@ async function handleGetEmailDetail(key: string, headers: Record<string, string>
     html: parsed.html || false,
     textAsHtml: parsed.textAsHtml || null,
     attachments,
+    rawHeaders,
+    headerLines,
   };
 
   return {
