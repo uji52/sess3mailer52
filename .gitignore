@@ -9,6 +9,8 @@ yarn-error.log*
 backend/cdk.out/
 backend/*.d.ts
 backend/*.js
+**/cdk.json
+!**/cdk.json.example
 
 # Keys & Secrets
 keys/private_key.pem
@@ -22,3 +24,6 @@ keys/private_key.pem
 Thumbs.db
 .vscode/
 .idea/
+
+# Private
+tools/create_cookie.js

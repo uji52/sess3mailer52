@@ -26,3 +26,24 @@ test('Sess3MailerStack synthesizes correctly with required resources', () => {
   // API Gateway HTTP API が作成されていること
   template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
 });
+
+test('Sess3MailerStack attaches custom domain and certificate when provided', () => {
+  const app = new cdk.App();
+  const stack = new Sess3MailerStack(app, 'TestDomainStack', {
+    publicKeyPath: '../keys/public_key.pem',
+    customDomainName: 'email.uji52.com',
+    certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+  });
+
+  const template = Template.fromStack(stack);
+
+  template.hasResourceProperties('AWS::CloudFront::Distribution', {
+    DistributionConfig: {
+      Aliases: ['email.uji52.com'],
+      ViewerCertificate: {
+        AcmCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+        SslSupportMethod: 'sni-only',
+      },
+    },
+  });
+});

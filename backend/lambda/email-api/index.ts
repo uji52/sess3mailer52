@@ -7,7 +7,10 @@ import {
 import { simpleParser, ParsedMail } from 'mailparser';
 import { Readable } from 'stream';
 
-const s3Client = new S3Client({});
+const s3Client = new S3Client({
+  followRegionRedirects: true,
+  region: process.env.SES_BUCKET_REGION || undefined,
+});
 const BUCKET_NAME = process.env.SES_BUCKET_NAME || '';
 const PREFIX = process.env.SES_PREFIX || '';
 

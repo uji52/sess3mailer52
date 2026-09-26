@@ -2,6 +2,7 @@
 
 AWS SES で受信して S3 バケットに保存されたメール（RFC 822 / MIME形式）を、CloudFront 経由でブラウザから快適かつ安全に閲覧できるサーバーレス Web メーラーです。
 AWS CDK (TypeScript) によりワンストップでインフラをプロビジョニングできます。
+AWS SES で受信したメールがS3上に配置される機構は別途自身で設けてください
 
 ---
 
@@ -41,7 +42,7 @@ flowchart TD
 
 ```
 .
-├── app/                     # フロントエンド Web アプリケーション (静的サイト)
+├── front/                   # フロントエンド Web アプリケーション (静的サイト)
 │   ├── index.html           # 2ペイン型メールビューア画面
 │   ├── app.js               # API通信・本文レンダリング・Cookie未設定検知
 │   └── style.css            # クリーン＆モダンなUIスタイル
@@ -50,7 +51,8 @@ flowchart TD
 │   ├── lib/sess3mailer-stack.ts # CDK スタック定義 (S3, CloudFront, Lambda, API Gateway)
 │   ├── lambda/email-api/    # メール取得・パースAPI Lambda
 │   │   └── index.ts
-│   ├── cdk.json             # CDK設定（S3バケット名・プレフィックス等の定義）
+│   ├── cdk.json.example     # CDK設定テンプレート（Git管理）
+│   ├── cdk.json             # CDK設定実体（※環境ごとの設定のためGit除外）
 │   └── package.json
 ├── keys/                    # CloudFront 署名用キーペア格納ディレクトリ
 │   ├── private_key.pem      # 秘密鍵（※Git除外）
@@ -78,18 +80,28 @@ npm install
 ```
 `keys/private_key.pem`（秘密鍵）と `keys/public_key.pem`（公開鍵）が作成されます。
 
-### ステップ 3: 既存のS3バケット名を設定
-`backend/cdk.json` を開き、`sesMailBucketName` にお使いの SES 受信メール用 S3 バケット名を入力します。
+### ステップ 3: 設定ファイルの作成と既存S3バケットの設定
+テンプレート `backend/cdk.json.example` をコピーして `backend/cdk.json` を作成します：
+
+```bash
+cp backend/cdk.json.example backend/cdk.json
+```
+
+作成した `backend/cdk.json` を開き、`sesMailBucketName` にお使いの SES 受信メール用 S3 バケット名を入力します。
 
 ```json
   "context": {
     "sesMailBucketName": "your-existing-ses-bucket-name",
     "sesMailPrefix": "emails/",   // バケット内にフォルダを指定している場合（ルートなら空文字 ""）
-    "publicKeyPath": "../keys/public_key.pem"
+    "publicKeyPath": "../keys/public_key.pem",
+    // 独自ドメイン（例: email.uji52.com）を利用する場合のみ以下を設定
+    "customDomainName": "email.uji52.com",
+    "certificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/xxxx-xxxx-xxxx" // ※必ず us-east-1 (バージニア北部) のACM証明書
   }
 ```
 
 > **Note**: `sesMailBucketName` を変更せずにそのままデプロイした場合は、テスト用の新規 S3 バケットが自動作成されます。
+> 独自ドメインを指定しない場合は、CloudFront デフォルトのドメイン（`https://xxxx.cloudfront.net`）でアクセスできます。
 
 ### ステップ 4: CDK デプロイ
 AWS 認証情報（`aws configure` や SSO）を準備した状態でデプロイを実行します。

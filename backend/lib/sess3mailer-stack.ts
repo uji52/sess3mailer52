@@ -10,6 +10,7 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
 export interface Sess3MailerStackProps extends cdk.StackProps {
   /**
@@ -21,9 +22,21 @@ export interface Sess3MailerStackProps extends cdk.StackProps {
    */
   sesMailPrefix?: string;
   /**
+   * SESメールS3バケットのリージョン（例: "us-east-1"）。未指定時は自動解決
+   */
+  sesMailBucketRegion?: string;
+  /**
    * CloudFront署名付きクッキー用の公開鍵PEMファイルのパス
    */
   publicKeyPath?: string;
+  /**
+   * カスタムドメイン名（例: email.uji52.com）
+   */
+  customDomainName?: string;
+  /**
+   * ACM証明書ARN（※CloudFront用のため必ず us-east-1 で発行された証明書）
+   */
+  certificateArn?: string;
 }
 
 export class Sess3MailerStack extends cdk.Stack {
@@ -41,10 +54,31 @@ export class Sess3MailerStack extends cdk.Stack {
       this.node.tryGetContext('sesMailPrefix') ||
       '';
 
+    const sesMailBucketRegion =
+      props?.sesMailBucketRegion ||
+      this.node.tryGetContext('sesMailBucketRegion') ||
+      '';
+
     const publicKeyPathProp =
       props?.publicKeyPath ||
       this.node.tryGetContext('publicKeyPath') ||
       '../keys/public_key.pem';
+
+    const customDomainName =
+      props?.customDomainName ||
+      this.node.tryGetContext('customDomainName');
+
+    const certificateArn =
+      props?.certificateArn ||
+      this.node.tryGetContext('certificateArn');
+
+    let certificate: acm.ICertificate | undefined;
+    let domainNames: string[] | undefined;
+
+    if (customDomainName && certificateArn) {
+      certificate = acm.Certificate.fromCertificateArn(this, 'CustomDomainCert', certificateArn);
+      domainNames = [customDomainName];
+    }
 
     // 2. SES受信メール用S3バケットの特定
     let sesMailBucket: s3.IBucket;
@@ -97,11 +131,11 @@ export class Sess3MailerStack extends cdk.Stack {
       environment: {
         SES_BUCKET_NAME: sesMailBucket.bucketName,
         SES_PREFIX: sesMailPrefix,
+        SES_BUCKET_REGION: sesMailBucketRegion,
       },
       bundling: {
         minify: true,
         sourceMap: true,
-        externalModules: ['@aws-sdk/client-s3'], // Node 20 runtime同梱
       },
     });
 
@@ -137,6 +171,8 @@ export class Sess3MailerStack extends cdk.Stack {
     const distribution = new cloudfront.Distribution(this, 'MailViewerDistribution', {
       defaultRootObject: 'index.html',
       comment: 'SES S3 Mail Viewer with Signed Cookies Protection',
+      domainNames,
+      certificate,
       // デフォルト: フロントエンドS3 (OAC + TrustedKeyGroup)
       defaultBehavior: {
         origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(frontendBucket),
@@ -166,8 +202,10 @@ export class Sess3MailerStack extends cdk.Stack {
     });
 
     // 9. デプロイ後の出力
+    const siteDomain = customDomainName || distribution.distributionDomainName;
+
     new cdk.CfnOutput(this, 'MailViewerUrl', {
-      value: `https://${distribution.distributionDomainName}`,
+      value: `https://${siteDomain}`,
       description: 'SES Mail Viewer Web URL',
     });
 
@@ -182,7 +220,7 @@ export class Sess3MailerStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'GenerateCookieCommand', {
-      value: `node tools/generate_cloudfront_signed_cookies.js --publicKeyId ${publicKey.publicKeyId} --domain ${distribution.distributionDomainName}`,
+      value: `node tools/generate_cloudfront_signed_cookies.js --publicKeyId ${publicKey.publicKeyId} --domain ${siteDomain}`,
       description: 'Command to generate signed cookies for browser access',
     });
   }
