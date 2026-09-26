@@ -159,7 +159,7 @@ export class Sess3MailerStack extends cdk.Stack {
 
     // 8. フロントエンド Web アセットの S3 デプロイ & CloudFront キャッシュ無効化
     new s3deploy.BucketDeployment(this, 'DeployFrontend', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '../../app'))],
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../../front'))],
       destinationBucket: frontendBucket,
       distribution,
       distributionPaths: ['/*'],
