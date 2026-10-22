@@ -18,6 +18,9 @@ keys/private_key.pem
 .env
 .env.*
 !.env.example
+backend/keys/
+*firebase*.json
+google-services.json
 
 # OS & Editor
 .DS_Store

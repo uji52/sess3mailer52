@@ -11,6 +11,9 @@ import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export interface Sess3MailerStackProps extends cdk.StackProps {
   /**
@@ -37,6 +40,10 @@ export interface Sess3MailerStackProps extends cdk.StackProps {
    * ACM証明書ARN（※CloudFront用のため必ず us-east-1 で発行された証明書）
    */
   certificateArn?: string;
+  /**
+   * Firebaseサービスアカウント秘密鍵JSONのファイルパス（プッシュ通知用）
+   */
+  firebaseServiceAccountPath?: string;
 }
 
 export class Sess3MailerStack extends cdk.Stack {
@@ -71,6 +78,35 @@ export class Sess3MailerStack extends cdk.Stack {
     const certificateArn =
       props?.certificateArn ||
       this.node.tryGetContext('certificateArn');
+
+    let firebaseServiceAccountJson: string | undefined;
+    const firebasePathProp =
+      props?.firebaseServiceAccountPath ||
+      this.node.tryGetContext('firebaseServiceAccountPath');
+    let resolvedFirebasePath: string | undefined;
+
+    if (firebasePathProp) {
+      resolvedFirebasePath = path.isAbsolute(firebasePathProp)
+        ? firebasePathProp
+        : path.resolve(__dirname, '..', firebasePathProp);
+    } else {
+      // keys/ ディレクトリから *firebase*.json を自動探索
+      const keysDirs = [path.resolve(__dirname, '../keys'), path.resolve(__dirname, '../../keys')];
+      for (const kd of keysDirs) {
+        if (fs.existsSync(kd)) {
+          const found = fs.readdirSync(kd).find(f => f.includes('firebase') && f.endsWith('.json'));
+          if (found) {
+            resolvedFirebasePath = path.join(kd, found);
+            break;
+          }
+        }
+      }
+    }
+
+    if (resolvedFirebasePath && fs.existsSync(resolvedFirebasePath)) {
+      firebaseServiceAccountJson = fs.readFileSync(resolvedFirebasePath, 'utf8');
+      console.log(`Firebase credentials loaded from: ${resolvedFirebasePath}`);
+    }
 
     let certificate: acm.ICertificate | undefined;
     let domainNames: string[] | undefined;
@@ -201,7 +237,49 @@ export class Sess3MailerStack extends cdk.Stack {
       distributionPaths: ['/*'],
     });
 
-    // 9. デプロイ後の出力
+    // 9. 新着メール通知用 SNS トピック & FCM プッシュ通知用 Lambda
+    const emailNotificationTopic = new sns.Topic(this, 'EmailNotificationTopic', {
+      displayName: 'SES Mail Notification Topic',
+    });
+
+    // SES からの Publish を許可
+    emailNotificationTopic.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowSESPublish',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('ses.amazonaws.com')],
+        actions: ['sns:Publish'],
+        resources: [emailNotificationTopic.topicArn],
+        conditions: {
+          StringEquals: {
+            'AWS:SourceAccount': this.account,
+          },
+        },
+      })
+    );
+
+    if (firebaseServiceAccountJson) {
+      const emailNotifierFunction = new lambdaNodejs.NodejsFunction(this, 'EmailNotifierFunction', {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        entry: path.join(__dirname, '../lambda/email-notifier/index.ts'),
+        handler: 'handler',
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 256,
+        environment: {
+          FIREBASE_SERVICE_ACCOUNT_JSON: firebaseServiceAccountJson,
+        },
+        bundling: {
+          minify: true,
+          sourceMap: true,
+        },
+      });
+
+      emailNotificationTopic.addSubscription(
+        new snsSubscriptions.LambdaSubscription(emailNotifierFunction)
+      );
+    }
+
+    // 10. デプロイ後の出力
     const siteDomain = customDomainName || distribution.distributionDomainName;
 
     new cdk.CfnOutput(this, 'MailViewerUrl', {
@@ -217,6 +295,11 @@ export class Sess3MailerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CloudFrontKeyGroupId', {
       value: keyGroup.keyGroupId,
       description: 'CloudFront Key Group ID',
+    });
+
+    new cdk.CfnOutput(this, 'EmailNotificationTopicArn', {
+      value: emailNotificationTopic.topicArn,
+      description: 'SNS Topic ARN for SES Receipt Rule notification action',
     });
 
     new cdk.CfnOutput(this, 'GenerateCookieCommand', {
