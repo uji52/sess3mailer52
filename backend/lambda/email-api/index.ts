@@ -2,6 +2,7 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  DeleteObjectCommand,
   _Object,
 } from '@aws-sdk/client-s3';
 import { simpleParser, ParsedMail } from 'mailparser';
@@ -67,7 +68,7 @@ export const handler = async (event: APIGatewayEvent) => {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Cookie',
   };
 
@@ -91,7 +92,13 @@ export const handler = async (event: APIGatewayEvent) => {
       return await handleGetEmailDetail(emailId, headers);
     }
 
-    // 3. ルーティング: /api/emails
+    // 3. ルーティング: DELETE /api/emails/{id}
+    if (emailDetailMatch && method === 'DELETE') {
+      const emailId = decodeURIComponent(emailDetailMatch[1]);
+      return await handleDeleteEmail(emailId, headers);
+    }
+
+    // 4. ルーティング: /api/emails
     if ((rawPath === '/api/emails' || rawPath === '/api/emails/') && method === 'GET') {
       const limit = parseInt(event.queryStringParameters?.limit || '50', 10);
       const continuationToken = event.queryStringParameters?.continuationToken;
@@ -319,4 +326,41 @@ async function handleGetAttachment(key: string, attachmentIndex: number) {
     },
     body: targetAttachment.content.toString('base64'),
   };
+}
+
+/**
+ * メール削除 (S3オブジェクトの削除)
+ */
+async function handleDeleteEmail(key: string, headers: Record<string, string>) {
+  // プレフィックス制限がある場合の検証
+  if (PREFIX && !key.startsWith(PREFIX)) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ message: 'Forbidden' }),
+    };
+  }
+
+  try {
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(deleteCommand);
+    console.log(`Deleted S3 object: ${key} from bucket: ${BUCKET_NAME}`);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ success: true, message: 'メールを削除しました', key }),
+    };
+  } catch (err: any) {
+    console.error(`Failed to delete S3 object: ${key}`, err);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ message: 'メールの削除に失敗しました', error: err.message }),
+    };
+  }
 }

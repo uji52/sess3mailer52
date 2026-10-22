@@ -175,15 +175,20 @@ export class Sess3MailerStack extends cdk.Stack {
       },
     });
 
-    // S3読み取り権限の付与
+    // S3読み取り・削除権限の付与
     sesMailBucket.grantRead(emailApiFunction);
+    sesMailBucket.grantDelete(emailApiFunction);
 
     // 6. API Gateway (HTTP API)
     const httpApi = new apigwv2.HttpApi(this, 'EmailHttpApi', {
       description: 'SES Mail Viewer Backend API',
       corsPreflight: {
         allowOrigins: ['*'],
-        allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.OPTIONS],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.DELETE,
+          apigwv2.CorsHttpMethod.OPTIONS,
+        ],
         allowHeaders: ['*'],
       },
     });
@@ -195,7 +200,7 @@ export class Sess3MailerStack extends cdk.Stack {
 
     httpApi.addRoutes({
       path: '/api/{proxy+}',
-      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.DELETE, apigwv2.HttpMethod.OPTIONS],
       integration: lambdaIntegration,
     });
 

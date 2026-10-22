@@ -19,6 +19,7 @@ const mailCcEl = document.getElementById('mailCc');
 const mailCcWrapperEl = document.getElementById('mailCcWrapper');
 const mailDateEl = document.getElementById('mailDate');
 const viewRawBtnEl = document.getElementById('viewRawBtn');
+const deleteEmailBtnEl = document.getElementById('deleteEmailBtn');
 
 const attachmentsSectionEl = document.getElementById('attachmentsSection');
 const attachmentsListEl = document.getElementById('attachmentsList');
@@ -61,6 +62,10 @@ function setupEventListeners() {
     if (!currentEmail) return;
     showHeadersModal();
   });
+
+  if (deleteEmailBtnEl) {
+    deleteEmailBtnEl.addEventListener('click', handleDeleteCurrentEmail);
+  }
 
   if (closeHeaderModalBtnEl) {
     closeHeaderModalBtnEl.addEventListener('click', hideHeadersModal);
@@ -142,10 +147,18 @@ function renderEmailList(list) {
       </div>
       <div class="item-subject" title="${escapeHtml(item.subject)}">${escapeHtml(item.subject || '(件名なし)')}</div>
       <div class="item-bottom">
-        <span></span>
         <span>${sizeStr}</span>
+        <button type="button" class="item-delete-btn" title="このメールをS3から削除">🗑️ 削除</button>
       </div>
     `;
+
+    const itemDeleteBtn = li.querySelector('.item-delete-btn');
+    if (itemDeleteBtn) {
+      itemDeleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteEmailById(item.id, item.subject);
+      });
+    }
 
     li.addEventListener('click', () => selectEmail(item));
     emailListEl.appendChild(li);
@@ -564,4 +577,68 @@ function setupResizer() {
   if (expandSidebarBtnEmptyEl) {
     expandSidebarBtnEmptyEl.addEventListener('click', () => setSidebarCollapsed(false));
   }
+}
+
+/**
+ * メールをS3から削除する共通処理
+ */
+async function deleteEmailById(targetId, targetSubject) {
+  if (!targetId) return;
+
+  const subject = targetSubject || '(件名なし)';
+  const ok = window.confirm(`このメールをS3から完全に削除しますか？\n\n件名: ${subject}`);
+  if (!ok) return;
+
+  if (deleteEmailBtnEl && currentEmail && currentEmail.id === targetId) {
+    deleteEmailBtnEl.disabled = true;
+    deleteEmailBtnEl.textContent = '削除中...';
+  }
+
+  try {
+    const res = await fetch(`/api/emails/${targetId}`, {
+      method: 'DELETE',
+    });
+
+    if (res.status === 403) {
+      showAuthModal();
+      return;
+    }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error: ${res.status}`);
+    }
+
+    // 削除成功: 一覧から除外して再描画
+    emails = emails.filter((item) => item.id !== targetId);
+    renderEmailList(emails);
+
+    // もし現在閲覧中のメールが削除された場合、プレビュー表示をリセット
+    if (currentEmail && currentEmail.id === targetId) {
+      currentEmail = null;
+      mailViewerEl.classList.add('hidden');
+      emptyStateEl.classList.remove('hidden');
+    }
+
+    if (emails.length === 0) {
+      emailListStatusEl.textContent = '受信メールはありません';
+      emailListStatusEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    console.error('Failed to delete email:', err);
+    alert(`メールの削除に失敗しました: ${err.message}`);
+  } finally {
+    if (deleteEmailBtnEl) {
+      deleteEmailBtnEl.disabled = false;
+      deleteEmailBtnEl.textContent = '削除';
+    }
+  }
+}
+
+/**
+ * 閲覧中のメールをS3から削除
+ */
+async function handleDeleteCurrentEmail() {
+  if (!currentEmail || !currentEmail.id) return;
+  await deleteEmailById(currentEmail.id, currentEmail.subject);
 }

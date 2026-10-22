@@ -17,6 +17,7 @@ import android.webkit.*
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -124,6 +125,37 @@ class MainActivity : AppCompatActivity() {
                     swipeRefresh.isRefreshing = false
                 }
             }
+
+            override fun onJsConfirm(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: JsResult?
+            ): Boolean {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("確認")
+                    .setMessage(message ?: "")
+                    .setPositiveButton("削除") { _, _ -> result?.confirm() }
+                    .setNegativeButton("キャンセル") { _, _ -> result?.cancel() }
+                    .setOnCancelListener { result?.cancel() }
+                    .show()
+                return true
+            }
+
+            override fun onJsAlert(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: JsResult?
+            ): Boolean {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("通知")
+                    .setMessage(message ?: "")
+                    .setPositiveButton("OK") { _, _ -> result?.confirm() }
+                    .setOnCancelListener { result?.cancel() }
+                    .show()
+                return true
+            }
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -186,15 +218,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSwipeRefresh() {
         swipeRefresh.setOnRefreshListener {
-            // スワイプ時に Cookie を再更新してリロード
-            setupCookiesAndLoadUrl()
+            // スワイプ時に Cookie を再更新し、キャッシュをクリアしてリロード
+            setupCookiesAndLoadUrl(clearCache = true)
         }
     }
 
     /**
      * 秘密鍵から署名付きクッキーを自動生成して CookieManager に注入し、URL を開く
      */
-    private fun setupCookiesAndLoadUrl() {
+    private fun setupCookiesAndLoadUrl(clearCache: Boolean = false) {
         val domain = Config.getDomain(this)
         val keyId = Config.getPublicKeyId(this)
         val pem = Config.getPrivateKeyPem(this)
@@ -218,6 +250,10 @@ class MainActivity : AppCompatActivity() {
             }
             cookieManager.flush()
 
+            if (clearCache) {
+                webView.clearCache(true)
+            }
+
             // ページの読み込み
             webView.loadUrl("$targetUrl/")
         } catch (e: Exception) {
@@ -233,7 +269,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_refresh -> {
-                setupCookiesAndLoadUrl()
+                setupCookiesAndLoadUrl(clearCache = true)
                 true
             }
             R.id.action_settings -> {

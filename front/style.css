@@ -204,6 +204,28 @@ body {
   align-items: center;
   font-size: 0.75rem;
   color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.item-delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ef4444;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.8;
+  transition: all 0.15s ease;
+}
+
+.item-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  opacity: 1;
 }
 
 /* メインコンテンツ */
@@ -327,10 +349,27 @@ body {
   padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .small-btn:hover {
   color: var(--text-primary);
+}
+
+.small-btn.btn-danger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.small-btn.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+.small-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 添付ファイル */

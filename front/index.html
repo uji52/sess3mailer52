@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>SES S3 Mail Viewer</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✉️</text></svg>">
 </head>
 <body>
@@ -89,6 +92,7 @@
             <div class="meta-right">
               <time id="mailDate" class="mail-date"></time>
               <button id="viewRawBtn" class="small-btn" title="メールヘッダー詳細を表示">ヘッダー</button>
+              <button id="deleteEmailBtn" class="small-btn btn-danger" title="このメールをS3から削除">削除</button>
             </div>
           </div>
 
@@ -169,6 +173,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=1.2.0"></script>
 </body>
 </html>
